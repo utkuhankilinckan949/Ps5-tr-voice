@@ -34,3 +34,18 @@ Bu tasarımda Türkçe ses başlangıçta ayrı çıkıştan verilir. Böylece o
 Windows 10/11 hedeflenir. İlk prototip Python tabanlıdır. API anahtarları kaynak koda yazılmaz; yerel ortam değişkenleri veya kullanıcı ayarlarıyla sağlanır.
 
 Kurulum adımları ve gerçek zamanlı ses motoru henüz geliştirme aşamasındadır.
+
+
+## Windows prototipini çalıştırma
+
+Python 3.10 veya üzeri kurulduktan sonra depo klasöründe PowerShell açın:
+
+```powershell
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -e .
+python -m ps5_tr_voice.main
+```
+
+Uygulama şu an ses giriş aygıtlarını listeler ve seçilen girişin seviyesini gösterir. Bu aşama, HDMI ses ayırıcıdan gelen sesin laptop tarafından alınıp alınmadığını doğrulamak içindir; canlı çeviri ve Türkçe seslendirme henüz eklenmedi.
