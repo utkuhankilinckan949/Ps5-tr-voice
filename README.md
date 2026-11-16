@@ -16,9 +16,9 @@ Bu tasarımda Türkçe ses başlangıçta ayrı çıkıştan verilir. Böylece o
 
 ## Geliştirme aşamaları
 
-1. Windows uygulaması: ses giriş/çıkış aygıtlarını görme ve giriş seviyesini test etme.
-2. İngilizce konuşma algılama ve canlı metne dönüştürme.
-3. Türkçe çeviri ve TTS seslendirme.
+1. Windows uygulaması: ses giriş aygıtlarını görme ve giriş seviyesini test etme. (Tamamlandı)
+2. İngilizce konuşma algılama ve canlı metne dönüştürme. (İlk çevrimdışı prototip eklendi.)
+3. Türkçe çeviri ve TTS seslendirme. (Sıradaki aşama.)
 4. Gecikme, ses seviyesi ve oyun sesiyle senkronizasyon iyileştirmeleri.
 5. Android kontrol/altyazı uygulaması.
 6. PS5 + projektör + laptop ile uçtan uca test.
@@ -48,4 +48,4 @@ python -m pip install -e .
 python -m ps5_tr_voice.main
 ```
 
-Uygulama şu an ses giriş aygıtlarını listeler ve seçilen girişin seviyesini gösterir. Bu aşama, HDMI ses ayırıcıdan gelen sesin laptop tarafından alınıp alınmadığını doğrulamak içindir; canlı çeviri ve Türkçe seslendirme henüz eklenmedi.
+Uygulama ses giriş aygıtlarını listeler. “İngilizce konuşmayı algıla” düğmesi, seçilen girişten sesi alıp faster-whisper'ın base.en modeliyle İngilizce metne dönüştürür. İlk kullanımda model otomatik indirilir; internet bağlantısı ve birkaç GB boş disk alanı gerekebilir. Bu prototip CPU üzerinde int8 çalışır. Türkçe çeviri ve seslendirme henüz eklenmemiştir.
