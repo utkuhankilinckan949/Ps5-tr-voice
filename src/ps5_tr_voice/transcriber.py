@@ -17,7 +17,7 @@ class EnglishTranscriber:
         self,
         on_text: Callable[[str], None],
         on_status: Callable[[str], None],
-        model_size: str = "tiny.en",
+        model_size: str = "base.en",
     ) -> None:
         self.on_text = on_text
         self.on_status = on_status
@@ -74,7 +74,7 @@ class EnglishTranscriber:
             self.on_status("Hafif İngilizce modeli hazırlanıyor (ilk açılışta indirilir)...")
             model = WhisperModel(self.model_size, device="cpu", compute_type="int8")
             self._ready.set()
-            self.on_status("Dinleniyor: İngilizce konuşabilirsiniz.")
+            self.on_status("Dinleniyor: daha doğru tanıma için biraz daha uzun ses parçaları işleniyor.")
             pending: list[np.ndarray] = []
             sample_count = 0
             while not self._stop.is_set():
@@ -86,7 +86,7 @@ class EnglishTranscriber:
                     break
                 pending.append(chunk)
                 sample_count += len(chunk)
-                if sample_count < 3 * 16000:
+                if sample_count < 5 * 16000:
                     continue
                 audio = np.concatenate(pending)
                 pending.clear()
@@ -94,7 +94,7 @@ class EnglishTranscriber:
                 segments, _ = model.transcribe(
                     audio,
                     language="en",
-                    beam_size=1,
+                    beam_size=3,
                     vad_filter=True,
                     condition_on_previous_text=False,
                 )
