@@ -1,4 +1,4 @@
-"""First Windows UI: enumerate audio devices and monitor input level."""
+"""Windows UI for audio monitoring and offline English transcription."""
 
 from __future__ import annotations
 
@@ -7,94 +7,92 @@ import sys
 
 import numpy as np
 import sounddevice as sd
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtWidgets import (
-    QApplication,
-    QComboBox,
-    QLabel,
-    QMainWindow,
-    QMessageBox,
-    QPushButton,
-    QProgressBar,
-    QVBoxLayout,
-    QWidget,
+    QApplication, QComboBox, QLabel, QMainWindow, QMessageBox,
+    QPushButton, QProgressBar, QTextEdit, QVBoxLayout, QWidget,
 )
+
+from .transcriber import EnglishTranscriber
+
+
+class UiSignals(QObject):
+    text = Signal(str)
+    status = Signal(str)
 
 
 class AudioMonitorWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("PS5 TR Voice")
-        self.setMinimumWidth(480)
+        self.setMinimumSize(560, 520)
         self._stream: sd.InputStream | None = None
         self._levels: queue.Queue[float] = queue.Queue(maxsize=1)
+        self._transcriber: EnglishTranscriber | None = None
+        self._signals = UiSignals()
+        self._signals.text.connect(self._append_text)
+        self._signals.status.connect(self._set_status)
 
         root = QWidget()
         layout = QVBoxLayout(root)
-
         intro = QLabel(
-            "İlk kurulum: PS5 sesinin laptop'a geldiği giriş aygıtını seçin.\n"
-            "Bu sürüm yalnızca bağlantıyı ve ses seviyesini test eder."
+            "Bu sürüm seçilen ses girişini dinler ve İngilizce konuşmayı çevrimdışı "
+            "olarak metne dönüştürür. İlk kullanımda model dosyası indirilir."
         )
         intro.setWordWrap(True)
         layout.addWidget(intro)
-
         layout.addWidget(QLabel("Ses giriş aygıtı"))
         self.device_combo = QComboBox()
         self._input_devices = self._load_input_devices()
         for device in self._input_devices:
             self.device_combo.addItem(
-                f"{device['name']}  ({device['channels']} kanal)",
+                f"{device['name']} ({device['channels']} kanal)",
                 userData=device["index"],
             )
         layout.addWidget(self.device_combo)
 
         self.level_label = QLabel("Giriş seviyesi: bekleniyor")
         layout.addWidget(self.level_label)
-
         self.level_bar = QProgressBar()
         self.level_bar.setRange(0, 100)
-        self.level_bar.setValue(0)
         layout.addWidget(self.level_bar)
 
-        self.start_button = QPushButton("Ses girişini test et")
+        self.start_button = QPushButton("İngilizce konuşmayı algıla")
         self.start_button.clicked.connect(self.start_monitoring)
         layout.addWidget(self.start_button)
-
         self.stop_button = QPushButton("Durdur")
         self.stop_button.setEnabled(False)
         self.stop_button.clicked.connect(self.stop_monitoring)
         layout.addWidget(self.stop_button)
 
+        layout.addWidget(QLabel("Algılanan İngilizce metin"))
+        self.transcript = QTextEdit()
+        self.transcript.setReadOnly(True)
+        layout.addWidget(self.transcript)
         self.status_label = QLabel("Durum: hazır")
+        self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
-
         self.setCentralWidget(root)
 
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._refresh_level)
         self._timer.start(100)
-
         if not self._input_devices:
             self.start_button.setEnabled(False)
-            self.status_label.setText(
-                "Durum: ses girişi bulunamadı. USB ses giriş adaptörü gerekebilir."
-            )
+            self.status_label.setText("Ses girişi bulunamadı. USB ses giriş aygıtı gerekebilir.")
 
     @staticmethod
     def _load_input_devices() -> list[dict[str, object]]:
-        found: list[dict[str, object]] = []
+        found = []
         for index, device in enumerate(sd.query_devices()):
             channels = int(device.get("max_input_channels", 0))
             if channels > 0:
-                found.append(
-                    {
-                        "index": index,
-                        "name": str(device.get("name", f"Input {index}")),
-                        "channels": channels,
-                        "sample_rate": int(device.get("default_samplerate", 48000)),
-                    }
-                )
+                found.append({
+                    "index": index,
+                    "name": str(device.get("name", f"Input {index}")),
+                    "channels": channels,
+                    "sample_rate": int(device.get("default_samplerate", 48000)),
+                })
         return found
 
     def start_monitoring(self) -> None:
@@ -103,16 +101,20 @@ class AudioMonitorWindow(QMainWindow):
         device_index = self.device_combo.currentData()
         if device_index is None:
             return
-
-        device = next(
-            item for item in self._input_devices if item["index"] == device_index
-        )
+        device = next(item for item in self._input_devices if item["index"] == device_index)
         channels = min(2, int(device["channels"]))
         samplerate = int(device["sample_rate"])
 
+        self._transcriber = EnglishTranscriber(
+            on_text=lambda value: self._signals.text.emit(value),
+            on_status=lambda value: self._signals.status.emit(value),
+        )
+        self._transcriber.start()
+
         def on_audio(indata: np.ndarray, frames: int, timing: object, status: object) -> None:
             del frames, timing, status
-            rms = float(np.sqrt(np.mean(np.square(indata, dtype=np.float32))))
+            mono = np.mean(indata, axis=1) if indata.ndim > 1 else indata
+            rms = float(np.sqrt(np.mean(np.square(mono, dtype=np.float32))))
             level = min(1.0, rms * 5.0)
             try:
                 self._levels.put_nowait(level)
@@ -125,25 +127,38 @@ class AudioMonitorWindow(QMainWindow):
                     self._levels.put_nowait(level)
                 except queue.Full:
                     pass
+            if self._transcriber is not None:
+                # Whisper expects 16 kHz; resample without an extra audio dependency.
+                target_length = int(len(mono) * 16000 / samplerate)
+                if target_length > 0:
+                    positions = np.linspace(0, len(mono) - 1, target_length)
+                    resampled = np.interp(positions, np.arange(len(mono)), mono).astype(np.float32)
+                    self._transcriber.feed(resampled)
 
         try:
             self._stream = sd.InputStream(
-                device=int(device_index),
-                channels=channels,
-                samplerate=samplerate,
-                dtype="float32",
-                callback=on_audio,
+                device=int(device_index), channels=channels, samplerate=samplerate,
+                dtype="float32", callback=on_audio, blocksize= int(samplerate * 0.25),
             )
             self._stream.start()
         except Exception as exc:
             self._stream = None
+            if self._transcriber:
+                self._transcriber.stop()
+                self._transcriber = None
             QMessageBox.critical(self, "Ses girişi açılamadı", str(exc))
             return
 
         self.start_button.setEnabled(False)
         self.stop_button.setEnabled(True)
         self.device_combo.setEnabled(False)
-        self.status_label.setText("Durum: ses dinleniyor")
+        self._set_status("Model yükleniyor; ilk açılışta biraz bekleyin.")
+
+    def _append_text(self, value: str) -> None:
+        self.transcript.append(value)
+
+    def _set_status(self, value: str) -> None:
+        self.status_label.setText(f"Durum: {value}")
 
     def _refresh_level(self) -> None:
         try:
@@ -161,12 +176,14 @@ class AudioMonitorWindow(QMainWindow):
                 self._stream.close()
             finally:
                 self._stream = None
+        if self._transcriber is not None:
+            self._transcriber.stop()
+            self._transcriber = None
         self.start_button.setEnabled(bool(self._input_devices))
         self.stop_button.setEnabled(False)
         self.device_combo.setEnabled(True)
         self.level_bar.setValue(0)
         self.level_label.setText("Giriş seviyesi: bekleniyor")
-        self.status_label.setText("Durum: durduruldu")
 
     def closeEvent(self, event: object) -> None:
         self.stop_monitoring()
