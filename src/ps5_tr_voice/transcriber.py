@@ -68,7 +68,7 @@ class EnglishTranscriber:
             self.on_status("Hızlı İngilizce modeli hazırlanıyor (ilk açılışta indirilir)...")
             model = self._load_model()
             self._ready.set()
-            self.on_status("Dinleniyor: düşük gecikmeli İngilizce tanıma etkin.")
+            self.on_status("Dinleniyor: ses alınıyor, 3 saniyelik parçalar tanınıyor.")
             pending: list[np.ndarray] = []
             sample_count = 0
             while not self._stop.is_set():
@@ -81,7 +81,7 @@ class EnglishTranscriber:
                 pending.append(chunk)
                 sample_count += len(chunk)
                 # Process every ~2 seconds instead of waiting five seconds.
-                if sample_count < 2 * 16000:
+                if sample_count < 3 * 16000:
                     continue
                 audio = np.concatenate(pending)
                 pending.clear()
@@ -92,14 +92,17 @@ class EnglishTranscriber:
                     language="en",
                     beam_size=1,
                     best_of=1,
-                    vad_filter=True,
+                    vad_filter=False,
                     condition_on_previous_text=False,
                 )
                 text = " ".join(segment.text.strip() for segment in segments).strip()
                 elapsed = time.perf_counter() - started
                 if text:
                     self.on_text(text)
-                if elapsed > 2.0:
+                    self.on_status(f"Metin algılandı ({elapsed:.1f} sn).")
+                else:
+                    self.on_status(f"Ses işlendi ({elapsed:.1f} sn); bu parçada anlaşılır konuşma bulunamadı.")
+                if elapsed > 3.0:
                     self.on_status(
                         f"Tanıma {elapsed:.1f} saniye sürdü; ses kaydı korunuyor, "
                         "işleme kuyruğu birikebilir."
