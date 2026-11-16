@@ -1,4 +1,4 @@
-"""Low-latency offline English speech recognition using faster-whisper."""
+"""Offline English speech recognition using faster-whisper."""
 
 from __future__ import annotations
 
@@ -18,12 +18,12 @@ class EnglishTranscriber:
         self,
         on_text: Callable[[str], None],
         on_status: Callable[[str], None],
-        model_size: str = "tiny.en",
+        model_size: str = "base.en",
     ) -> None:
         self.on_text = on_text
         self.on_status = on_status
         self.model_size = model_size
-        # Never discard captured audio: an unbounded queue preserves every chunk.
+        # Preserve captured audio rather than silently dropping dialogue.
         self.audio_queue: queue.Queue[np.ndarray | None] = queue.Queue()
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
@@ -50,17 +50,16 @@ class EnglishTranscriber:
         self.audio_queue.put(None)
 
     def _load_model(self) -> WhisperModel:
-        # Use CPU int8 for reliability on Windows. CUDA may appear available
-        # while its cuBLAS/cuDNN runtime DLLs are missing, causing inference to fail.
-        self.on_status("Kararlı CPU modu hazırlanıyor (int8)...")
+        # CPU int8 avoids the missing CUDA/cuBLAS DLL issue on this Windows setup.
+        self.on_status("Daha doğru İngilizce modeli hazırlanıyor (base.en / CPU int8)...")
         return WhisperModel(self.model_size, device="cpu", compute_type="int8")
 
     def _run(self) -> None:
         try:
-            self.on_status("Hızlı İngilizce modeli hazırlanıyor (ilk açılışta indirilir)...")
+            self.on_status("İngilizce konuşma modeli yükleniyor; ilk açılışta indirilebilir...")
             model = self._load_model()
             self._ready.set()
-            self.on_status("Dinleniyor: ses alınıyor, 3 saniyelik parçalar tanınıyor.")
+            self.on_status("Dinleniyor: konuşma yaklaşık 5 saniyelik parçalarla tanınıyor.")
             pending: list[np.ndarray] = []
             sample_count = 0
             while not self._stop.is_set():
@@ -72,8 +71,7 @@ class EnglishTranscriber:
                     break
                 pending.append(chunk)
                 sample_count += len(chunk)
-                # Process every ~2 seconds instead of waiting five seconds.
-                if sample_count < 3 * 16000:
+                if sample_count < 5 * 16000:
                     continue
                 audio = np.concatenate(pending)
                 pending.clear()
@@ -82,22 +80,23 @@ class EnglishTranscriber:
                 segments, _ = model.transcribe(
                     audio,
                     language="en",
-                    beam_size=1,
-                    best_of=1,
-                    vad_filter=False,
-                    condition_on_previous_text=False,
+                    beam_size=5,
+                    best_of=5,
+                    vad_filter=True,
+                    vad_parameters={"min_silence_duration_ms": 400},
+                    condition_on_previous_text=True,
+                    temperature=0.0,
                 )
                 text = " ".join(segment.text.strip() for segment in segments).strip()
                 elapsed = time.perf_counter() - started
                 if text:
                     self.on_text(text)
-                    self.on_status(f"Metin algılandı ({elapsed:.1f} sn).")
+                    self.on_status(f"Metin algılandı ({elapsed:.1f} sn işlem süresi).")
                 else:
                     self.on_status(f"Ses işlendi ({elapsed:.1f} sn); bu parçada anlaşılır konuşma bulunamadı.")
-                if elapsed > 3.0:
+                if elapsed > 5.0:
                     self.on_status(
-                        f"Tanıma {elapsed:.1f} saniye sürdü; ses kaydı korunuyor, "
-                        "işleme kuyruğu birikebilir."
+                        f"Tanıma {elapsed:.1f} saniye sürdü; doğruluk artırıldı ancak gecikme oluşabilir."
                     )
             self.on_status("İngilizce konuşma algılama durduruldu.")
         except Exception as exc:
