@@ -6,11 +6,12 @@ PS5 oyunlarındaki İngilizce konuşmaları Türkçeye çevirip yapay zekâ sesi
 
 - Seçilen ses girişini dinler ve giriş seviyesini gösterir.
 - faster-whisper ile İngilizce konuşmayı bilgisayarda çevrimdışı metne dönüştürür.
-- Algılanan İngilizce metni Google Çeviri üzerinden Türkçeye aktarır.
+- Algılanan İngilizce metni Argos Translate'in yerel İngilizce-Türkçe modeliyle Türkçeye aktarır.
 - İngilizce metin ve Türkçe çeviri ayrı alanlarda gösterilir.
 - Çeviri ayrı bir arka plan iş parçacığında çalışır; ses tanıma iş parçacığını doğrudan bekletmez.
+- İlk kullanımda İngilizce-Türkçe çeviri modeli internet üzerinden bir kez indirilir (yaklaşık 120 MB). Sonraki çeviriler bilgisayarda, internet/API isteği olmadan yapılır.
 
-**Bu aşamada Türkçe seslendirme (TTS) henüz eklenmemiştir.** Çeviri için internet bağlantısı gerekir. Google Çeviri hizmeti üçüncü taraf çevrimiçi bir hizmettir; çevrilen metin bu hizmete gönderilir. API anahtarı gerekmez, ancak hizmet erişimi ve kullanım sınırları değişebilir.
+**Bu aşamada Türkçe seslendirme (TTS) henüz eklenmemiştir.**
 
 ## Hedef kullanım
 
@@ -23,7 +24,7 @@ PS5 oyunlarındaki İngilizce konuşmaları Türkçeye çevirip yapay zekâ sesi
 
 1. Windows ses giriş aygıtlarını görme ve giriş seviyesini test etme. (Tamamlandı)
 2. İngilizce konuşma algılama ve canlı metne dönüştürme. (İlk prototip çalışıyor; hız/doğruluk iyileştirmeleri sürecek.)
-3. Türkçe çeviri. (İlk prototip eklendi; gerçek kullanımda test edilmeli.)
+3. Türkçe çeviri. (Yerel model eklendi; gerçek kullanımda test edilmeli.)
 4. Türkçe TTS seslendirme ve ayrı ses çıkışı.
 5. Gecikme, ses seviyesi ve oyun sesiyle senkronizasyon iyileştirmeleri.
 6. PS5 + projektör + laptop ile uçtan uca test.
@@ -43,4 +44,4 @@ python -m pip install -e .
 python -m ps5_tr_voice.main
 ```
 
-Uygulama ses giriş aygıtlarını listeler. “Dinlemeyi ve çeviriyi başlat” düğmesi seçilen girişten sesi alır. İlk kullanımda faster-whisper'ın base.en modeli indirilir. Tanıma CPU int8 modunda çalışır. Türkçe çeviri için ayrıca internet bağlantısı gerekir.
+Uygulama ses giriş aygıtlarını listeler. “Dinlemeyi ve çeviriyi başlat” düğmesi seçilen girişten sesi alır. İlk kullanımda faster-whisper'ın base.en modeli indirilir. Tanıma CPU int8 modunda çalışır. İlk çeviri kullanımında Argos İngilizce-Türkçe modeli indirilir; sonraki çeviriler çevrimdışı çalışır.
