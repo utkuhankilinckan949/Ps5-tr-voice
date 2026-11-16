@@ -1,9 +1,10 @@
-"""Offline English speech recognition using faster-whisper."""
+"""Low-latency offline English speech recognition using faster-whisper."""
 
 from __future__ import annotations
 
 import queue
 import threading
+import time
 from collections.abc import Callable
 
 import numpy as np
@@ -11,96 +12,98 @@ from faster_whisper import WhisperModel
 
 
 class EnglishTranscriber:
-    """Consumes mono 16 kHz audio chunks and emits recognized English text."""
+    """Consumes mono 16 kHz audio and emits recognized English text."""
 
     def __init__(
         self,
         on_text: Callable[[str], None],
         on_status: Callable[[str], None],
-        model_size: str = "base.en",
+        model_size: str = "tiny.en",
     ) -> None:
         self.on_text = on_text
         self.on_status = on_status
         self.model_size = model_size
-        # A short queue prevents old audio accumulating when inference is slower.
-        self.audio_queue: queue.Queue[np.ndarray | None] = queue.Queue(maxsize=12)
+        # Never discard captured audio: an unbounded queue preserves every chunk.
+        self.audio_queue: queue.Queue[np.ndarray | None] = queue.Queue()
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._ready = threading.Event()
-        self._overflow_reported = False
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
             return
         self._stop.clear()
         self._ready.clear()
-        self._overflow_reported = False
+        with self.audio_queue.mutex:
+            self.audio_queue.queue.clear()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
     def feed(self, audio: np.ndarray) -> None:
-        # Do not buffer audio while the model is downloading/loading.
         if self._stop.is_set() or not self._ready.is_set():
             return
-        chunk = np.asarray(audio, dtype=np.float32).reshape(-1).copy()
-        try:
-            self.audio_queue.put_nowait(chunk)
-        except queue.Full:
-            # Drop the oldest chunk rather than building an ever-growing delay.
-            try:
-                self.audio_queue.get_nowait()
-            except queue.Empty:
-                pass
-            try:
-                self.audio_queue.put_nowait(chunk)
-            except queue.Full:
-                pass
-            if not self._overflow_reported:
-                self._overflow_reported = True
-                self.on_status(
-                    "Tanıma hızı düşük; gecikmeyi azaltmak için eski ses parçaları atlanıyor."
-                )
+        self.audio_queue.put(np.asarray(audio, dtype=np.float32).reshape(-1).copy())
 
     def stop(self) -> None:
         self._stop.set()
         self._ready.clear()
+        self.audio_queue.put(None)
+
+    def _load_model(self) -> WhisperModel:
+        # Try RTX/NVIDIA CUDA first. If the local CUDA runtime is unavailable,
+        # transparently fall back to CPU so the app remains usable.
         try:
-            self.audio_queue.put_nowait(None)
-        except queue.Full:
+            import ctranslate2
+            if "float16" in ctranslate2.get_supported_compute_types("cuda"):
+                model = WhisperModel(self.model_size, device="cuda", compute_type="float16")
+                self.on_status("NVIDIA ekran kartı ile hızlandırılmış tanıma etkin.")
+                return model
+        except Exception:
             pass
+        self.on_status("GPU hızlandırması kullanılamadı; hızlı CPU modu başlatılıyor.")
+        return WhisperModel(self.model_size, device="cpu", compute_type="int8")
 
     def _run(self) -> None:
         try:
-            self.on_status("Hafif İngilizce modeli hazırlanıyor (ilk açılışta indirilir)...")
-            model = WhisperModel(self.model_size, device="cpu", compute_type="int8")
+            self.on_status("Hızlı İngilizce modeli hazırlanıyor (ilk açılışta indirilir)...")
+            model = self._load_model()
             self._ready.set()
-            self.on_status("Dinleniyor: daha doğru tanıma için biraz daha uzun ses parçaları işleniyor.")
+            self.on_status("Dinleniyor: düşük gecikmeli İngilizce tanıma etkin.")
             pending: list[np.ndarray] = []
             sample_count = 0
             while not self._stop.is_set():
                 try:
-                    chunk = self.audio_queue.get(timeout=0.25)
+                    chunk = self.audio_queue.get(timeout=0.2)
                 except queue.Empty:
                     continue
                 if chunk is None:
                     break
                 pending.append(chunk)
                 sample_count += len(chunk)
-                if sample_count < 5 * 16000:
+                # Process every ~2 seconds instead of waiting five seconds.
+                if sample_count < 2 * 16000:
                     continue
                 audio = np.concatenate(pending)
                 pending.clear()
                 sample_count = 0
+                started = time.perf_counter()
                 segments, _ = model.transcribe(
                     audio,
                     language="en",
-                    beam_size=3,
+                    beam_size=1,
+                    best_of=1,
                     vad_filter=True,
                     condition_on_previous_text=False,
                 )
                 text = " ".join(segment.text.strip() for segment in segments).strip()
+                elapsed = time.perf_counter() - started
                 if text:
                     self.on_text(text)
+                if elapsed > 2.0:
+                    self.on_status(
+                        f"Tanıma {elapsed:.1f} saniye sürdü; ses kaydı korunuyor, "
+                        "işleme kuyruğu birikebilir."
+                    )
             self.on_status("İngilizce konuşma algılama durduruldu.")
         except Exception as exc:
             self.on_status(f"Tanıma hatası: {exc}")
