@@ -1,4 +1,4 @@
-"""Offline English speech recognition using faster-whisper."""
+""""Offline English speech recognition using faster-whisper."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ class EnglishTranscriber:
         self.on_text = on_text
         self.on_status = on_status
         self.model_size = model_size
-        # Preserve captured audio rather than silently dropping dialogue.
+        # Keep every captured audio block; never discard a block to catch up.
         self.audio_queue: queue.Queue[np.ndarray | None] = queue.Queue()
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
@@ -50,8 +50,7 @@ class EnglishTranscriber:
         self.audio_queue.put(None)
 
     def _load_model(self) -> WhisperModel:
-        # CPU int8 avoids the missing CUDA/cuBLAS DLL issue on this Windows setup.
-        self.on_status("Daha doğru İngilizce modeli hazırlanıyor (base.en / CPU int8)...")
+        self.on_status("İngilizce modeli hazırlanıyor (base.en / CPU int8)...")
         return WhisperModel(self.model_size, device="cpu", compute_type="int8")
 
     def _run(self) -> None:
@@ -59,19 +58,21 @@ class EnglishTranscriber:
             self.on_status("İngilizce konuşma modeli yükleniyor; ilk açılışta indirilebilir...")
             model = self._load_model()
             self._ready.set()
-            self.on_status("Dinleniyor: konuşma yaklaşık 5 saniyelik parçalarla tanınıyor.")
+            self.on_status("Dinleniyor: ses 3 saniyelik parçalarla işleniyor.")
             pending: list[np.ndarray] = []
             sample_count = 0
-            while not self._stop.is_set():
+            while True:
                 try:
                     chunk = self.audio_queue.get(timeout=0.2)
                 except queue.Empty:
+                    if self._stop.is_set():
+                        break
                     continue
                 if chunk is None:
                     break
                 pending.append(chunk)
                 sample_count += len(chunk)
-                if sample_count < 5 * 16000:
+                if sample_count < 3 * 16000:
                     continue
                 audio = np.concatenate(pending)
                 pending.clear()
@@ -80,24 +81,20 @@ class EnglishTranscriber:
                 segments, _ = model.transcribe(
                     audio,
                     language="en",
-                    beam_size=5,
-                    best_of=5,
-                    vad_filter=True,
-                    vad_parameters={"min_silence_duration_ms": 400},
-                    condition_on_previous_text=True,
+                    beam_size=1,
+                    best_of=1,
+                    vad_filter=False,
+                    condition_on_previous_text=False,
                     temperature=0.0,
                 )
                 text = " ".join(segment.text.strip() for segment in segments).strip()
                 elapsed = time.perf_counter() - started
+                queued_seconds = self.audio_queue.qsize() * 0.25
                 if text:
                     self.on_text(text)
-                    self.on_status(f"Metin algılandı ({elapsed:.1f} sn işlem süresi).")
-                else:
-                    self.on_status(f"Ses işlendi ({elapsed:.1f} sn); bu parçada anlaşılır konuşma bulunamadı.")
-                if elapsed > 5.0:
-                    self.on_status(
-                        f"Tanıma {elapsed:.1f} saniye sürdü; doğruluk artırıldı ancak gecikme oluşabilir."
-                    )
+                self.on_status(
+                    f"İşlem: {elapsed:.1f} sn | Bekleyen ses: yaklaşık {queued_seconds:.1f} sn"
+                )
             self.on_status("İngilizce konuşma algılama durduruldu.")
         except Exception as exc:
             self.on_status(f"Tanıma hatası: {exc}")
