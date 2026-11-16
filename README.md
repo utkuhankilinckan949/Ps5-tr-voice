@@ -2,25 +2,30 @@
 
 PS5 oyunlarındaki İngilizce konuşmaları Türkçeye çevirip yapay zekâ sesiyle ayrı bir ses kanalından dinlemeyi amaçlayan yardımcı uygulama.
 
+## Mevcut prototip
+
+- Seçilen ses girişini dinler ve giriş seviyesini gösterir.
+- faster-whisper ile İngilizce konuşmayı bilgisayarda çevrimdışı metne dönüştürür.
+- Algılanan İngilizce metni Google Çeviri üzerinden Türkçeye aktarır.
+- İngilizce metin ve Türkçe çeviri ayrı alanlarda gösterilir.
+- Çeviri ayrı bir arka plan iş parçacığında çalışır; ses tanıma iş parçacığını doğrudan bekletmez.
+
+**Bu aşamada Türkçe seslendirme (TTS) henüz eklenmemiştir.** Çeviri için internet bağlantısı gerekir. Google Çeviri hizmeti üçüncü taraf çevrimiçi bir hizmettir; çevrilen metin bu hizmete gönderilir. API anahtarı gerekmez, ancak hizmet erişimi ve kullanım sınırları değişebilir.
+
 ## Hedef kullanım
 
 - PlayStation 5 görüntüsü HDMI üzerinden Xiaomi Smart Projector L1 Pro'ya gider.
 - HDMI ses ayırıcıdan alınan oyun sesi Windows laptop'a USB ses giriş aygıtı üzerinden aktarılır.
-- Windows uygulaması konuşmayı algılar, İngilizce metne dönüştürür, Türkçeye çevirir ve Türkçe ses üretir.
-- Orijinal oyun sesi projektörden duyulmaya devam eder; Türkçe ses ayrı kulaklık/hoparlör çıkışından verilir.
-- İlerleyen aşamada Android uygulaması, Windows uygulamasını yerel ağ üzerinden kontrol eder ve çeviri metinlerini gösterir.
-
-## Önemli ses notu
-
-Bu tasarımda Türkçe ses başlangıçta ayrı çıkıştan verilir. Böylece orijinal ses kapatılmaz. Aynı hoparlörde karıştırma (mix) istenirse sonraki aşamada gecikme ve ses seviyesi kontrolüyle ayrıca ele alınacaktır.
+- Windows uygulaması konuşmayı algılar, İngilizce metne dönüştürür ve Türkçeye çevirir.
+- Orijinal oyun sesi projektörden duyulmaya devam eder; Türkçe ses ileride ayrı kulaklık/hoparlör çıkışından verilecektir.
 
 ## Geliştirme aşamaları
 
-1. Windows uygulaması: ses giriş aygıtlarını görme ve giriş seviyesini test etme. (Tamamlandı)
-2. İngilizce konuşma algılama ve canlı metne dönüştürme. (İlk çevrimdışı prototip eklendi.)
-3. Türkçe çeviri ve TTS seslendirme. (Sıradaki aşama.)
-4. Gecikme, ses seviyesi ve oyun sesiyle senkronizasyon iyileştirmeleri.
-5. Android kontrol/altyazı uygulaması.
+1. Windows ses giriş aygıtlarını görme ve giriş seviyesini test etme. (Tamamlandı)
+2. İngilizce konuşma algılama ve canlı metne dönüştürme. (İlk prototip çalışıyor; hız/doğruluk iyileştirmeleri sürecek.)
+3. Türkçe çeviri. (İlk prototip eklendi; gerçek kullanımda test edilmeli.)
+4. Türkçe TTS seslendirme ve ayrı ses çıkışı.
+5. Gecikme, ses seviyesi ve oyun sesiyle senkronizasyon iyileştirmeleri.
 6. PS5 + projektör + laptop ile uçtan uca test.
 
 ## Donanım bağlantısı
@@ -29,23 +34,13 @@ Bu tasarımda Türkçe ses başlangıçta ayrı çıkıştan verilir. Böylece o
 
 **Henüz belirli bir HDMI ayırıcı veya ses adaptörü modeli seçilmedi.** Donanım listesi, laptop üzerindeki mevcut ses girişleri öğrenildikten sonra netleştirilecek.
 
-## Geliştirme
+## Windows kurulumu
 
-Windows 10/11 hedeflenir. İlk prototip Python tabanlıdır. API anahtarları kaynak koda yazılmaz; yerel ortam değişkenleri veya kullanıcı ayarlarıyla sağlanır.
-
-Kurulum adımları ve gerçek zamanlı ses motoru henüz geliştirme aşamasındadır.
-
-
-## Windows prototipini çalıştırma
-
-Python 3.10 veya üzeri kurulduktan sonra depo klasöründe PowerShell açın:
+Proje klasöründe PowerShell açın:
 
 ```powershell
-py -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
 python -m pip install -e .
 python -m ps5_tr_voice.main
 ```
 
-Uygulama ses giriş aygıtlarını listeler. “İngilizce konuşmayı algıla” düğmesi, seçilen girişten sesi alıp faster-whisper'ın base.en modeliyle İngilizce metne dönüştürür. İlk kullanımda model otomatik indirilir; internet bağlantısı ve birkaç GB boş disk alanı gerekebilir. Bu prototip CPU üzerinde int8 çalışır. Türkçe çeviri ve seslendirme henüz eklenmemiştir.
+Uygulama ses giriş aygıtlarını listeler. “Dinlemeyi ve çeviriyi başlat” düğmesi seçilen girişten sesi alır. İlk kullanımda faster-whisper'ın base.en modeli indirilir. Tanıma CPU int8 modunda çalışır. Türkçe çeviri için ayrıca internet bağlantısı gerekir.
