@@ -29,7 +29,7 @@ class AudioMonitorWindow(QMainWindow):
         self._signals.status.connect(self._set_status)
         root = QWidget()
         layout = QVBoxLayout(root)
-        intro = QLabel("Ses girişini dinler, İngilizce konuşmayı metne dönüştürür ve Google Çeviri üzerinden Türkçeye aktarır. Bu aşamada henüz seslendirme yoktur.")
+        intro = QLabel("Ses girişini dinler, İngilizce konuşmayı metne dönüştürür ve bilgisayardaki çevrimdışı Argos modeliyle Türkçeye aktarır. Bu aşamada henüz seslendirme yoktur.")
         intro.setWordWrap(True)
         layout.addWidget(intro)
         layout.addWidget(QLabel("Ses giriş aygıtı"))
