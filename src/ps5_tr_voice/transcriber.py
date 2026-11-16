@@ -50,17 +50,9 @@ class EnglishTranscriber:
         self.audio_queue.put(None)
 
     def _load_model(self) -> WhisperModel:
-        # Try RTX/NVIDIA CUDA first. If the local CUDA runtime is unavailable,
-        # transparently fall back to CPU so the app remains usable.
-        try:
-            import ctranslate2
-            if "float16" in ctranslate2.get_supported_compute_types("cuda"):
-                model = WhisperModel(self.model_size, device="cuda", compute_type="float16")
-                self.on_status("NVIDIA ekran kartı ile hızlandırılmış tanıma etkin.")
-                return model
-        except Exception:
-            pass
-        self.on_status("GPU hızlandırması kullanılamadı; hızlı CPU modu başlatılıyor.")
+        # Use CPU int8 for reliability on Windows. CUDA may appear available
+        # while its cuBLAS/cuDNN runtime DLLs are missing, causing inference to fail.
+        self.on_status("Kararlı CPU modu hazırlanıyor (int8)...")
         return WhisperModel(self.model_size, device="cpu", compute_type="int8")
 
     def _run(self) -> None:
