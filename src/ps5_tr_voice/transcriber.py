@@ -86,7 +86,7 @@ class EnglishTranscriber:
                     break
                 pending.append(chunk)
                 sample_count += len(chunk)
-                if sample_count < 4 * 16000:
+                if sample_count < 3 * 16000:
                     continue
                 audio = np.concatenate(pending)
                 pending.clear()
